@@ -1,0 +1,456 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <title>うちわ管理システム</title>
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.5/font/bootstrap-icons.css" rel="stylesheet">
+  <style>
+    body { background-color: #f0f2f5; font-family: "Helvetica Neue", Arial, sans-serif; }
+    .order-card { transition: all 0.2s; border: none; border-radius: 12px; overflow: hidden; background: white; height: 100%; cursor: pointer; }
+    .order-card:hover { transform: translateY(-4px); box-shadow: 0 12px 20px rgba(0,0,0,0.1) !important; }
+    .status-badge { position: absolute; top: 10px; left: 10px; z-index: 10; font-weight: bold; padding: 0.4em 0.8em; border-radius: 20px; box-shadow: 0 2px 4px rgba(0,0,0,0.2); }
+    .img-area { height: 180px; background: #e9ecef; display: flex; align-items: center; justify-content: center; position: relative; border-bottom: 1px solid #eee; }
+    .img-main { max-width: 100%; max-height: 100%; object-fit: contain; padding: 4px; }
+    .spec-table { width: 100%; font-size: 0.85rem; margin-top: 8px; color: #555; }
+    .spec-table td { padding: 3px 0; vertical-align: top; border-bottom: 1px dashed #eee; }
+    .img-preview-box { border: 2px dashed #ccc; padding: 10px; text-align: center; border-radius: 6px; margin-top: 5px; background: #fff; min-height: 60px;}
+    .img-preview-box img { max-width: 100%; max-height: 200px; object-fit: contain; }
+    #loadingOverlay { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(255,255,255,0.8); z-index: 9999; display: flex; justify-content: center; align-items: center; flex-direction: column; }
+    .hidden { display: none !important; }
+    #systemAlert { display: none; z-index: 10000; }
+    
+    /* モーダル内タブ固定 */
+    #formTabs { 
+      position: sticky; top: -24px; z-index: 1020; 
+      background: #f8f9fa; padding: 10px 0; margin: -24px -24px 20px -24px;
+      border-bottom: 1px solid #dee2e6;
+    }
+    .modal-body { overflow-x: hidden; position: relative; }
+
+    .form-sub-header { width: 100%; padding: 10px 0 5px 0; margin-top: 5px; margin-bottom: 10px; border-bottom: 2px solid #e9ecef; color: #495057; font-size: 0.95rem; font-weight: bold; display: flex; align-items: center; }
+    .form-sub-header i { margin-right: 8px; font-size: 1.1rem; color: #0d6efd; }
+    .synced-field { background-color: #fdfdfe !important; border-left: 3px solid #0d6efd; }
+    .header-status-area { display: flex; gap: 8px; align-items: center; }
+    .header-select { font-size: 0.75rem; padding: 2px 24px 2px 8px; border-radius: 20px; background-color: #f8f9fa; border: 1px solid #dee2e6; font-weight: bold; color: #0d6efd; }
+    
+    /* ブロックレイアウト用 */
+    .field-block { 
+      background: #ffffff; border: 1px solid #dee2e6; border-radius: 8px; 
+      padding: 15px; margin-bottom: 15px; box-shadow: 0 2px 4px rgba(0,0,0,0.02);
+      height: auto; /* 修正箇所 */
+    }
+    .col-5-unit { width: 20%; flex: 0 0 20%; padding: 0 5px; }
+    .calc-symbol { display: flex; align-items: flex-end; justify-content: center; padding-bottom: 10px; font-weight: bold; color: #999; }
+
+    .nav-tabs .nav-link { border: none; color: #6c757d; font-weight: bold; padding: 10px 20px; border-radius: 8px; margin-right: 5px; }
+    .nav-tabs .nav-link.active { background-color: #0d6efd !important; color: white !important; box-shadow: 0 4px 10px rgba(13,110,253,0.3); }
+
+    .date-wrapper { position: relative; }
+    .date-display { 
+      position: absolute; top: 0; left: 0; width: 100%; height: 100%; 
+      pointer-events: none; background: white; padding: 0.375rem 0.75rem;
+      display: flex; align-items: center; border-radius: 0.375rem; border: 1px solid #ced4da;
+    }
+    input[type="date"]:focus + .date-display { opacity: 0; }
+    input[type="date"]::-webkit-calendar-picker-indicator { cursor: pointer; z-index: 2; position: relative; }
+
+    @media (max-width: 768px) { .col-5-unit { width: 100%; flex: 0 0 100%; margin-bottom: 10px; } }
+  </style>
+
+  <script id="server-payload" type="application/json">
+    <?!= jsonPayload ?>
+  </script>
+</head>
+<body>
+
+<div id="loadingOverlay" class="hidden">
+  <div class="spinner-border text-primary" role="status"></div>
+  <div class="mt-2 fw-bold" id="loadingText">処理中...</div>
+</div>
+
+<div id="systemAlert" class="alert alert-danger fixed-top m-3 shadow">
+  <strong>Error:</strong> <span id="systemAlertMsg"></span>
+  <button type="button" class="btn-close float-end" onclick="this.parentElement.style.display='none'"></button>
+</div>
+
+<nav class="navbar navbar-expand-lg navbar-dark bg-dark sticky-top shadow-sm">
+  <div class="container-fluid px-4">
+    <a class="navbar-brand fw-bold" href="#"><i class="bi bi-fan"></i> うちわ管理システム</a>
+    <div>
+      <button class="btn btn-success" onclick="openModal('new')"><i class="bi bi-plus-lg"></i> 新規登録</button>
+      <button class="btn btn-outline-light ms-2" onclick="searchServer()"><i class="bi bi-arrow-clockwise"></i></button>
+    </div>
+  </div>
+</nav>
+
+<div class="container-fluid mt-4 px-4">
+  <div class="row mb-4 align-items-center bg-white p-3 rounded shadow-sm mx-0">
+    <div class="col-md-3">
+      <div class="input-group">
+        <span class="input-group-text bg-light border-end-0"><i class="bi bi-search"></i></span>
+        <input type="text" id="searchInput" class="form-control border-start-0" placeholder="キーワード検索..." onkeyup="filterLocalOrders()">
+      </div>
+    </div>
+    <div class="col-md-3">
+      <select id="filterStatus" class="form-select" onchange="filterLocalOrders()">
+        <option value="">全ステータス</option>
+      </select>
+    </div>
+    <div class="col text-end text-muted small">
+      <span id="resultCount" class="fw-bold text-dark fs-5">0</span> 件
+    </div>
+  </div>
+  <div id="ordersContainer" class="row g-4"></div>
+</div>
+
+<div class="modal fade" id="editModal" tabindex="-1" data-bs-backdrop="static">
+  <div class="modal-dialog modal-xl modal-dialog-scrollable"> <div class="modal-content">
+      <div class="modal-header bg-light border-bottom-0">
+        <h5 class="modal-title fw-bold" id="modalTitle">データ詳細</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body p-4 bg-light">
+        <ul class="nav nav-tabs px-4" id="formTabs" role="tablist"></ul>
+        <form id="orderForm">
+           <div class="tab-content" id="formTabContent"></div>
+        </form>
+      </div>
+      <div class="modal-footer bg-white justify-content-between">
+        <button type="button" class="btn btn-outline-danger" id="btnDelete" onclick="deleteOrder()">削除</button>
+        <div>
+           <button type="button" class="btn btn-secondary me-2" data-bs-dismiss="modal">閉じる</button>
+           <button type="button" class="btn btn-primary fw-bold px-4" onclick="submitForm()">保存</button>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+<script>
+  let ALL_ORDERS = [];
+  let OPTIONS = {};
+  let HEADERS = [];
+  let myModalInstance = null;
+
+  const FIELD_RULES = {
+     '作成日時': { type: 'readonly' },
+     '更新日時': { type: 'readonly' },
+     'ID':       { type: 'hidden' }
+  };
+
+  const UI_CONFIG = {
+    units: { '円': '円', '枚': '枚', '個': '個', '数': '本' },
+    headerPills: ['ステータス', '生産管理'],
+    excludedTabs: ['金額計算・原価情報']
+  };
+
+  window.onload = function() {
+    try {
+      const modalEl = document.getElementById('editModal');
+      if(modalEl) myModalInstance = new bootstrap.Modal(modalEl);
+      const payloadEl = document.getElementById('server-payload');
+      const payload = JSON.parse(payloadEl.textContent);
+      if (!payload.success) throw new Error(payload.error);
+      const d = payload.data;
+      if (d) {
+        ALL_ORDERS = d.orders || [];
+        OPTIONS = d.options || {};
+        HEADERS = d.headers || [];
+        initFilterOptions();
+        renderOrders(ALL_ORDERS);
+      } else { searchServer(); }
+    } catch (e) { showError(e.message); }
+  };
+
+  function formatDateWithDay(dateStr) {
+    if(!dateStr || !dateStr.match(/^\d{4}-\d{2}-\d{2}$/)) return dateStr;
+    const date = new Date(dateStr.replace(/-/g, '/'));
+    const days = ['日', '月', '火', '水', '木', '金', '土'];
+    return `${dateStr.replace(/-/g, '/')}(${days[date.getDay()]})`;
+  }
+
+  function showError(msg) {
+    document.getElementById('systemAlertMsg').innerText = msg;
+    document.getElementById('systemAlert').style.display = 'block';
+  }
+  function showLoading(msg) {
+    document.getElementById('loadingText').innerText = msg;
+    document.getElementById('loadingOverlay').classList.remove('hidden');
+  }
+  function hideLoading() { document.getElementById('loadingOverlay').classList.add('hidden'); }
+
+  function searchServer() {
+    showLoading('データ同期中...');
+    google.script.run
+      .withSuccessHandler(data => {
+        ALL_ORDERS = data.orders || [];
+        OPTIONS = data.options || {};
+        HEADERS = data.headers || [];
+        initFilterOptions();
+        renderOrders(ALL_ORDERS);
+        hideLoading();
+      })
+      .withFailureHandler(err => { hideLoading(); showError(err); })
+      .searchOrders('','');
+  }
+
+  function initFilterOptions() {
+    const sel = document.getElementById('filterStatus');
+    sel.innerHTML = '<option value="">全ステータス</option>';
+    let statusKey = HEADERS.find(k => k.includes('ステータス')) || 'ステータス';
+    const optKey = Object.keys(OPTIONS).find(k => statusKey.includes(k));
+    if(optKey && OPTIONS[optKey]) {
+      OPTIONS[optKey].forEach(s => {
+        const op = document.createElement('option');
+        op.value=s; op.innerText=s;
+        sel.appendChild(op);
+      });
+    }
+  }
+
+  function renderOrders(orders) {
+    const container = document.getElementById('ordersContainer');
+    document.getElementById('resultCount').innerText = orders.length;
+    container.innerHTML = '';
+    if(!orders.length) { container.innerHTML = '<div class="alert alert-info">データがありません</div>'; return; }
+    const statusKey = HEADERS.find(k => k.includes('ステータス')) || 'ステータス';
+    const nameKey = HEADERS.find(k => k.includes('顧客名')) || '顧客名';
+    orders.forEach(o => {
+      const imgKeys = Object.keys(o).filter(k => k.includes('画像'));
+      let mainImg = imgKeys[0] ? getThumb(o[imgKeys[0]]) : null;
+      let imgTag = mainImg ? `<img src="${mainImg}" class="img-main" loading="lazy">` : `<div class="text-muted h2"><i class="bi bi-image"></i></div>`;
+      let infoRows = '';
+      let count = 0;
+      HEADERS.forEach(h => {
+         if(h==='ID' || h.includes('画像') || h.includes('日時') || h===statusKey || h===nameKey) return;
+         const meta = parseHeader(h);
+         if(count < 5) {
+             let val = o[h] || '-';
+             if(val.match(/^\d{4}-\d{2}-\d{2}$/)) val = formatDateWithDay(val);
+             infoRows += `<tr><td class="text-muted w-50">${meta.label}</td><td class="fw-bold">${val}</td></tr>`;
+             count++;
+         }
+      });
+      const statusColor = getStatusColor(o[statusKey]);
+      const col = document.createElement('div');
+      col.className = 'col-md-6 col-lg-4 col-xl-3';
+      col.innerHTML = `
+        <div class="card shadow-sm order-card" onclick="openModal('edit', '${o.ID}')">
+          <div class="img-area">
+             <span class="status-badge ${statusColor} text-white">${o[statusKey]||'未'}</span>
+             ${imgTag}
+          </div>
+          <div class="card-body">
+             <h6 class="fw-bold mb-2 text-truncate">${o[nameKey]||'名称未設定'}</h6>
+             <table class="spec-table">${infoRows}</table>
+          </div>
+        </div>
+      `;
+      container.appendChild(col);
+    });
+  }
+
+  function getStatusColor(s) {
+    if(!s) return 'bg-secondary';
+    if(s.includes('完了')||s.includes('済')||s.includes('出荷')) return 'bg-success';
+    if(s.includes('中')||s.includes('製造')||s.includes('印刷')) return 'bg-primary';
+    if(s.includes('未')) return 'bg-warning text-dark';
+    return 'bg-info text-dark';
+  }
+
+  function getThumb(url) {
+    if(!url || typeof url !== 'string') return null;
+    const m = url.match(/[-\w]{25,}/);
+    return m ? `https://drive.google.com/thumbnail?sz=w500&id=${m[0]}` : url;
+  }
+
+  function parseHeader(header) {
+    const meta = { raw: header, syncWith: null, group: '基本', subHeader: null, label: header, specialGroup: null, isHeaderPill: false };
+    let work = header;
+    const syncMatch = work.match(/^\[(.+?)\]>(.+)$/);
+    if (syncMatch) { meta.syncWith = syncMatch[1]; work = syncMatch[2]; }
+    if (UI_CONFIG.headerPills.some(p => work.includes(p))) { meta.isHeaderPill = true; }
+    const segments = work.split(':');
+    if (work.includes('受注単価') || work.includes('原価')) {
+      meta.specialGroup = segments[0]; meta.group = "基本"; meta.label = segments[1];
+    } else if (segments.length >= 3) {
+      meta.group = segments[0]; meta.subHeader = segments[1]; meta.label = segments.slice(2).join(':');
+    } else if (segments.length === 2) {
+      meta.group = segments[0]; meta.label = segments[1];
+    } else { meta.label = work; }
+    return meta;
+  }
+
+  function buildDynamicForm(data = {}) {
+     const tabNav = document.getElementById('formTabs');
+     const tabContent = document.getElementById('formTabContent');
+     tabNav.innerHTML = ''; tabContent.innerHTML = '';
+     const groups = {}; const groupPills = {}; const syncMap = [];
+
+     HEADERS.forEach(h => {
+        const meta = parseHeader(h);
+        const rule = FIELD_RULES[h] || {};
+        if(!meta.label || meta.label === '-' || meta.label.trim() === '') return;
+        if (UI_CONFIG.excludedTabs.includes(meta.group)) meta.group = "基本";
+        if(rule.type === 'hidden' || meta.label === 'ID') {
+          const hi = document.createElement('input'); hi.type = 'hidden'; hi.name = h; hi.value = data[h] || '';
+          document.getElementById('orderForm').appendChild(hi); return;
+        }
+        if(!groups[meta.group]) { groups[meta.group] = []; groupPills[meta.group] = []; }
+        if (meta.isHeaderPill) { groupPills[meta.group].push({ ...meta, value: data[h] || '' }); }
+        groups[meta.group].push({ ...meta, rule });
+        if(meta.syncWith) syncMap.push({ source: meta.syncWith, target: h });
+     });
+
+     Object.keys(groups).forEach((gName, gIdx) => {
+        const tabId = `tab-${gIdx}`;
+        const li = document.createElement('li'); li.className = 'nav-item';
+        li.innerHTML = `<button class="nav-link ${gIdx===0?'active':''}" id="${tabId}-tab" data-bs-toggle="tab" data-bs-target="#${tabId}" type="button">${gName}</button>`;
+        tabNav.appendChild(li);
+
+        const pane = document.createElement('div'); pane.className = `tab-pane fade ${gIdx===0?'show active':''}`; pane.id = tabId;
+
+        const fields = groups[gName];
+        let fieldsHtml = '<div class="row g-3">';
+        let currentSub = null;
+        let currentSpecial = null;
+        let inBlock = false;
+        
+        fields.forEach((f, idx) => {
+            const h = f.raw; const val = (data[h] !== undefined) ? data[h] : '';
+            
+            if(f.specialGroup && f.specialGroup !== currentSpecial) {
+                if(currentSpecial !== null) fieldsHtml += `</div></div>`;
+                fieldsHtml += `<div class="col-12"><div class="row g-2 mb-3 align-items-end border-start border-primary border-4 ms-0 ps-2 bg-white rounded shadow-sm py-2">`;
+                currentSpecial = f.specialGroup;
+            } else if (!f.specialGroup && currentSpecial !== null) {
+                fieldsHtml += `</div></div>`; currentSpecial = null;
+            }
+
+            if(f.subHeader && f.subHeader !== currentSub) {
+                if(inBlock) fieldsHtml += `</div></div></div>`;
+                fieldsHtml += `<div class="col-md-6"><div class="field-block"><div class="form-sub-header"><i class="bi bi-box-seam"></i>${f.subHeader}</div><div class="row g-2">`;
+                currentSub = f.subHeader; inBlock = true;
+            } else if (!f.subHeader && inBlock) {
+                fieldsHtml += `</div></div></div>`; inBlock = false;
+            }
+
+            let type = f.rule.type;
+            if(!type) {
+              if(h.includes('画像')) type = 'image';
+              else if(h.includes('日')) type = 'date';
+              else if(h.includes('数') || h.includes('円') || h.includes('金額')) type = 'number';
+              else if(OPTIONS[f.label] || Object.keys(OPTIONS).some(k => f.raw.endsWith(k))) type = 'select';
+              else type = 'text';
+            }
+
+            let inputHtml = '';
+            let colClass = f.specialGroup ? 'col-5-unit' : (inBlock ? 'col-12' : 'col-md-6');
+            const syncAttr = f.syncWith ? `data-sync-with="${f.syncWith}"` : '';
+            const inputClass = `form-control ${f.syncWith ? 'synced-field' : ''}`;
+            let unitAddon = ""; Object.keys(UI_CONFIG.units).forEach(key => { if(f.label.includes(key)) unitAddon = `<span class="input-group-text">${UI_CONFIG.units[key]}</span>`; });
+
+            if (type === 'select') {
+                let opts = `<option value="">選択</option>`;
+                const sk = Object.keys(OPTIONS).find(k => f.raw.includes(k)) || f.label;
+                if (OPTIONS[sk]) OPTIONS[sk].forEach(opt => { opts += `<option value="${opt}" ${opt===val?'selected':''}>${opt}</option>`; });
+                inputHtml = `<select name="${h}" class="form-select ${f.syncWith?'synced-field':''}" ${syncAttr}>${opts}</select>`;
+            } else if (type === 'date') {
+                inputHtml = `<div class="date-wrapper"><input type="date" name="${h}" class="${inputClass}" value="${val}" ${syncAttr} oninput="updateDateDisplay(this)"><div class="date-display">${formatDateWithDay(val)}</div></div>`;
+            } else if (type === 'image') {
+                colClass = 'col-12';
+                inputHtml = `<input type="file" class="form-control mb-2" accept="image/*" onchange="previewImage(this, 'prev_${h.replace(/\W/g,'')}')"><input type="hidden" name="${h}" value="${val}"><div id="prev_${h.replace(/\W/g,'')}" class="img-preview-box"><img src="${getThumb(val)||''}" class="${val?'':'hidden'}"></div>`;
+            } else {
+                let ct = `<input type="${type==='number'?'number':'text'}" name="${h}" class="${inputClass}" value="${val}" ${syncAttr}>`;
+                inputHtml = unitAddon ? `<div class="input-group">${ct}${unitAddon}</div>` : ct;
+            }
+            fieldsHtml += `<div class="${colClass}"><label class="form-label small text-secondary fw-bold mb-1">${f.label}</label>${inputHtml}</div>`;
+            if (f.specialGroup && f.label === '数') fieldsHtml += `<div class="calc-symbol" style="width:20px; flex:0 0 20px;">×</div>`;
+        });
+        if(inBlock) fieldsHtml += `</div></div></div>`;
+        fieldsHtml += `</div>`;
+
+        let pillsHtml = '';
+        if (groupPills[gName]) {
+          groupPills[gName].forEach(p => {
+            const sk = Object.keys(OPTIONS).find(k => p.raw.includes(k)) || p.label;
+            let opts = `<option value="">${p.label}未設定</option>`;
+            if (OPTIONS[sk]) OPTIONS[sk].forEach(opt => { opts += `<option value="${opt}" ${opt===p.value?'selected':''}>${opt}</option>`; });
+            pillsHtml += `<div class="ms-2"><select name="${p.raw}" class="form-select header-select" onchange="syncBackToBody(this)">${opts}</select></div>`;
+          });
+        }
+        pane.innerHTML = `<div class="card border-0 shadow-sm mb-4"><div class="card-header bg-white py-3 d-flex justify-content-between align-items-center border-bottom"><div class="fw-bold text-dark"><i class="bi bi-tag-fill me-2 text-primary"></i>${gName}</div><div class="header-status-area">${pillsHtml}</div></div><div class="card-body bg-white p-4">${fieldsHtml}</div></div>`;
+        tabContent.appendChild(pane);
+     });
+     setupFieldSync(syncMap);
+  }
+
+  function updateDateDisplay(el) { const d = el.nextElementSibling; if (d) d.innerText = formatDateWithDay(el.value); }
+  function syncBackToBody(hEl) { const n = hEl.name; const bEls = document.querySelectorAll(`[name="${n}"]`); bEls.forEach(el => { if(el !== hEl) { el.value = hEl.value; el.dispatchEvent(new Event('input')); }}); }
+
+  // ★修正: 連動ロジックの強化
+  function setupFieldSync(syncMap) {
+    const form = document.getElementById('orderForm');
+    syncMap.forEach(m => {
+      // DOM全体から完全に一致する要素を探し出す
+      const sourceElements = Array.from(form.querySelectorAll(`[name="${m.source}"]`));
+      const targetElements = Array.from(form.querySelectorAll(`[name="${m.target}"]`));
+      
+      sourceElements.forEach(sourceEl => {
+        sourceEl.addEventListener('input', (e) => {
+          targetElements.forEach(targetEl => {
+            targetEl.value = e.target.value; 
+            if (targetEl.type === 'date') updateDateDisplay(targetEl);
+            // 連鎖的にイベントを発火
+            targetEl.dispatchEvent(new Event('input'));
+          });
+        });
+      });
+    });
+  }
+
+  function openModal(mode, id) {
+     const form = document.getElementById('orderForm');
+     const hiddens = form.querySelectorAll('input[type="hidden"]'); hiddens.forEach(h => h.remove());
+     form.reset();
+     const btnDel = document.getElementById('btnDelete');
+     if(btnDel) btnDel.style.display = (mode==='new') ? 'none' : 'block';
+     document.getElementById('modalTitle').innerText = (mode==='new') ? '新規登録' : '受注データ編集';
+     let targetData = {}; HEADERS.forEach(h => targetData[h] = '');
+     if(mode !== 'new') { const found = ALL_ORDERS.find(o => o.ID === id); if(found) targetData = found; }
+     buildDynamicForm(targetData); myModalInstance.show();
+  }
+
+  function previewImage(input, targetId) {
+     if(!input.files[0]) return;
+     const r = new FileReader(); r.onload = e => { const box = document.getElementById(targetId); box.innerHTML = `<img src="${e.target.result}">`; const hidden = input.nextElementSibling; if(hidden) { hidden.dataset.file = JSON.stringify({ name: input.files[0].name, type: input.files[0].type, data: e.target.result }); }};
+     r.readAsDataURL(input.files[0]);
+  }
+
+  function submitForm() {
+    if(!confirm('変更を保存しますか？')) return;
+    showLoading('保存中...'); const formEl = document.getElementById('orderForm'); const formData = {};
+    const inputs = Array.from(formEl.elements); inputs.forEach(el => { if (el.name) formData[el.name] = el.value; });
+    const fileInputs = formEl.querySelectorAll('input[type="file"]');
+    fileInputs.forEach(fi => { const hidden = fi.nextElementSibling; if(hidden && hidden.dataset.file) { const json = JSON.parse(hidden.dataset.file); formData[hidden.name] = { name:json.name, mimeType:json.type, data:json.data }; }});
+    google.script.run.withSuccessHandler(r => { hideLoading(); if(r.success) { myModalInstance.hide(); searchServer(); } else showError(r.message); }).withFailureHandler(e => { hideLoading(); showError(e); }).saveOrder(formData);
+  }
+
+  function deleteOrder() {
+     if(!confirm('このデータを削除しますか？')) return;
+     showLoading('削除中...'); const idInput = document.querySelector('input[name="ID"]'); if(!idInput) { hideLoading(); return; }
+     google.script.run.withSuccessHandler(r => { hideLoading(); if(r.success) { myModalInstance.hide(); searchServer(); } else showError(r.message); }).withFailureHandler(e => showError(e)).deleteOrder(idInput.value);
+  }
+
+  function filterLocalOrders() {
+    const k = document.getElementById('searchInput').value.toLowerCase();
+    const s = document.getElementById('filterStatus').value;
+    let statusKey = HEADERS.find(k => k.includes('ステータス')) || 'ステータス';
+    const res = ALL_ORDERS.filter(o => { const txt = Object.values(o).join(' ').toLowerCase(); return (!k || txt.includes(k)) && (!s || o[statusKey]===s); });
+    renderOrders(res);
+  }
+</script>
+</body>
+</html>
